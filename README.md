@@ -1,166 +1,188 @@
-# Lab: Authenticating Users
+# Cookies, Sessions, and Authentication API
 
-## Scenario
+## Overview
 
-In this lab, we'll continue working on the blog site from the last lab and set
-up a basic login feature.
+This project is a Flask-based backend API that demonstrates **session-based authentication** and **session-backed content access control**. It combines two core pieces of functionality:
 
-## Tools & Resources
+1. **User authentication using sessions**
+   - Users can log in, log out, and remain logged in across requests.
+   - Authentication state is stored securely using Flask’s session system.
 
-- [GitHub Repo](https://github.com/learn-co-curriculum/flask-authenticating-users-lab)
-- [What is Authentication? - auth0](https://auth0.com/intro-to-iam/what-is-authentication)
-- [API - Flask: class flask.session](https://flask.palletsprojects.com/en/2.2.x/api/#flask.session)
+2. **Article access with a backend-enforced paywall**
+   - Users may view up to **three articles per session**.
+   - After the limit is exceeded, further access is blocked at the API level.
 
-## Set Up
+All stateful logic is enforced on the backend to prevent frontend or browser-based bypassing.
 
-There is some starter code in place for a Flask API backend and a React
-frontend. To get set up, run:
+## File Structure
 
-```bash
-pipenv install && pipenv shell
-npm install --prefix client
-cd server
-flask db upgrade
-python seed.py
-```
+The project follows a standard Flask application layout.
 
-You can work on this lab by running the tests with `pytest -x`. It will also be
-helpful to see what's happening during the request/response cycle by running the
-app in the browser. You can run the Flask server with:
+server/app.py
+server/models.py
+server/seed.py
+server/app.db
+client/src/index.js
+client/src/App.js
+client/package.json
+README.md
 
-```bash
-python app.py
-```
+pgsql
+Copy code
 
-And you can run React in another terminal with:
+### Key Files
 
-```bash
-npm start --prefix client
-```
+- `server/app.py`  
+  Main Flask application. Defines API resources, session logic, authentication, and article routes.
 
-You don't have to make any changes to the React code to get this lab working.
-The React frontend has already defined a proxy in `package.json` as shown:
+- `server/models.py`  
+  SQLAlchemy models and Marshmallow schemas for `User` and `Article`.
 
-```json
-"proxy": "http://localhost:5555",
-```
+- `server/seed.py`  
+  Seeds the database with initial users and articles.
 
-The proxy avoids CORS issues and allows the server to set a session cookie to
-store the user's login data.
+- `server/app.db`  
+  SQLite database used for development.
 
-## Instructions
+- `client/src/App.js`  
+  React frontend that consumes the API (no changes required for this lab).
 
-### Task 1: Define the Problem
+---
 
-For our basic login feature, we'll need the following functionality:
+## Functionality
 
-- A user can log in by providing their username in a form.
-- A user can log out.
-- A user can remain logged in, even after refreshing the page.
+### Authentication
 
-We'll need to create the resources to handle each of these features.
+Authentication is handled using Flask sessions and RESTful resources.
 
-### Task 2: Determine the Design
+- A user logs in by submitting a username.
+- The user’s `id` is stored in `session['user_id']`.
+- Subsequent requests use the session to determine login state.
+- Logging out removes the session data.
 
-We'll need to build the following resources:
+### Session Persistence
 
-- `Login` is located at `/login`.
+- Session data persists across page refreshes.
+- Each browser session is tracked independently.
+- Clearing cookies or calling `/clear` resets the session.
 
-  - It has one route, `post()`.
-  - `post()` gets a `username` from `request`'s JSON.
-  - `post()` retrieves the user by `username` (we made these unique for you).
-  - `post()` sets the session's `user_id` value to the user's `id`.
-  - `post()` returns the user as JSON with a 200 status code.
+### Article Paywall
 
-- `Logout` is located at `/logout`.
+- Article views are tracked using `session['page_views']`.
+- The counter increments on every request to `/articles/<id>`.
+- Users may view **up to three articles per session**.
+- On the fourth request, the API returns a `401 Unauthorized` response.
 
-  - It has one route, `delete()`.
-  - `delete()` removes the `user_id` value from the session.
-  - `delete()` returns no data and a 204 (No Content) status code.
+## API Endpoints
 
-- `CheckSession` is located at `/check_session`.
-  - It has one route, `get()`.
-  - `get()` retrieves the `user_id` value from the session.
-  - If the session has a `user_id`, `get()` returns the user as JSON with a 200
-    status code.
-  - If the session does not have a `user_id`, `get()` returns no data and a 401
-    (Unauthorized) status code.
+### Authentication Routes
 
-### Task 3: Develop, Test, and Refine the Code
+#### `POST /login`
 
-#### Step 1: Create Routes
+Logs a user in using their username.
 
-- /login, post()
-  - should handle the request to get username
-  - find User in database by username. We'll need the id for the next step.
-- /delete, delete()
-- /check_session, get()
+**Behavior**
+- Retrieves the user by username
+- Stores `user_id` in the session
+- Returns the user as JSON
 
-#### Step 2: Initialize, Retrieve, and/or Update Session
+**Response**
+- `200 OK` with user data
+- `401 Unauthorized` if login fails
 
-- Session: /login post()
-  - set session['user_id'] to the found user's id
-- Session: /logout delete()
-  - remove the value for session['user_id']
-- Session: /check_session get()
-  - get current value of session['user_id'] (it may not exist)
+#### `DELETE /logout`
 
-#### Step 3: Return the Response
+Logs the user out.
 
-- Session: /login post()
-  - return user as JSON with a 200 status code
-- Session: /logout delete()
-  - returns no data and a 204 (No Content) status code
-- Session: /check_session get()
-  - If the session has a `user_id`, `get()` returns the user as JSON with a 200
-    status code.
-  - If the session does not have a `user_id`, `get()` returns no data and a 401
-    (Unauthorized) status code.
+**Behavior**
+- Removes `user_id` from the session
 
-The tests are not looking for invalid users for /login, but if you have extra time, consider what response you should send if a user is not found with the given username.
+**Response**
+- `204 No Content` (empty response body)
 
-#### Step 4: Test and Refine the Code
+#### `GET /check_session`
 
-Run the test suite:
+Checks whether a user is currently logged in.
 
-```bash
+**Behavior**
+- If `user_id` exists in the session, returns the user
+- Otherwise returns unauthorized
+
+**Response**
+- `200 OK` with user data
+- `401 Unauthorized` with empty JSON body
+
+### Article Routes
+
+#### `GET /articles`
+
+Returns all articles.
+
+#### `GET /articles/<int:id>`
+
+Returns a single article if the page view limit has not been exceeded.
+
+**Behavior**
+- Initializes and increments `session['page_views']`
+- Allows first three views
+- Blocks subsequent views
+
+**Blocked Response**
+{
+  "message": "Maximum pageview limit reached"
+}
+
+Status Code: 401 Unauthorized
+
+Utility Routes
+GET /clear
+DELETE /clear
+
+Clears all session data, including login state and page view count.
+
+Intended for testing and development use.
+
+### Features
+
+- Session-based authentication
+- Backend-enforced authorization checks
+- Secure session cookie signing via app.secret_key
+- Stateless frontend with API-driven auth state
+- RESTful route design using Flask-RESTful
+- SQLite-backed persistence for users and articles
+- Test-driven development with Pytest
+
+## How to Use
+Setup:
+- pipenv install && pipenv shell
+- npm install --prefix client
+- cd server
+- flask db upgrade
+- python seed.py
+
+Run the Backend
+- python app.py
+
+Run the Frontend
+- In a separate terminal: npm start --prefix client
+
+## Testing
 pytest
-```
 
-If any tests aren't passing, refine your code using each error message.
+Reset Session
 
-View the app in browser and test login, logout, and session persistence. Refine code if needed.
+Navigate to:
 
-Feel free to also take a look at how the frontend logic is set up to use these endpoints.
+http://localhost:5555/clear
 
-#### Step 5: Commit and Push Git History
+## Notes
 
-* Commit and push your code:
+Authentication and paywall logic are intentionally enforced on the backend.
 
-```bash
-git add .
-git commit -m "final solution"
-git push
-```
+Session data is signed but readable by the client; sensitive data should not be stored directly.
 
-* If you created a separate feature branch, remember to open a PR on main and merge.
+This project demonstrates foundational session-based auth concepts that translate to larger systems.
 
-### Task 4: Document and Maintain
+## License
 
-Best Practice documentation steps:
-* Add comments to the code to explain purpose and logic, clarifying intent and functionality of your code to other developers.
-* Update README text to reflect the functionality of the application following https://makeareadme.com. 
-  * Add screenshot of completed work included in Markdown in README.
-* Delete any stale branches on GitHub
-* Remove unnecessary/commented out code
-* If needed, update git ignore to remove sensitive data
-
-## Important Submission Note
-
-Before you submit your solution, you need to save your progress with git.
-
-1. Add your changes to the staging area by executing `git add .`.
-2. Create a commit by executing `git commit -m "Your commit message"`.
-3. Push your commits to GitHub by executing `git push origin main`.
-
-CodeGrade will grade your lab using the same tests as are provided in the `testing/` directory.
+Educational use only. Intended for learning Flask sessions, authentication, and backend access control.
